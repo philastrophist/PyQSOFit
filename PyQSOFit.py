@@ -135,10 +135,10 @@ def manygauss(xval, pp):
 
 
 
-
 class QSOFit():
     
-    def __init__(self,lam,flux,err,z,ra =- 999.,dec = -999.,plateid = None,mjd = None,fiberid = None,path = None,and_mask = None, or_mask = None):
+    def __init__(self,lam,flux,err,z,ra =- 999.,dec = -999.,plateid = None,mjd = None,fiberid = None,
+                 config=None, path = None,and_mask = None, or_mask = None):
         """
         Get the input data perpared for the QSO spectral fitting
         
@@ -182,12 +182,9 @@ class QSOFit():
         self.mjd = mjd
         self.fiberid = fiberid
         self.path = path
-        
-        
-        
-        
-        
-
+        self.config = config
+        if self.path is None and self.config is None:
+            raise ValueError("Need a path or a config table")
 
     def Fit(self, name = None, nsmooth = 1,and_or_mask = True,reject_badpix = True, deredden = True,wave_range = None,\
             wave_mask = None,decomposition_host = True, BC03 = False, Mi = None,npca_gal = 5, npca_qso = 20, \
@@ -947,10 +944,11 @@ class QSOFit():
 
 
         #read line parameter
-        linepara = fits.open(self.path+'qsopar.fits')
-        linelist = linepara[1].data
-        self.linelist = linelist
-        
+        if self.config is None:
+            self.linelist = linelist = fits.open(self.path+'qsopar.fits')[1].data
+        else:
+            self.linelist = linelist = self.config
+
         ind_kind_line = np.where((linelist['lambda'] > wave.min()) & (linelist['lambda'] < wave.max()), True, False) 
         if ind_kind_line.any() == True :
             #sort complex name with line wavelength
@@ -1435,7 +1433,29 @@ class QSOFit():
             for i in range(ngauss):
                 yval = yval + onegauss(xval, pp[i*3:(i+1)*3])
             return yval
-    
-    
 
 
+    def line_params(self, name):
+        d = {k: v for k, v in zip(self.line_result_name, self.line_result)}
+        return float(d[f'{name}_1_scale']), float(d[f'{name}_1_centerwave']), float(d[f'{name}_1_sigma'])
+
+    def line_model(self, name, wvls=None):
+        """
+        The flux for a given line as named in the input line list
+        """
+        result = np.array(self.line_params(name))
+        if wvls is None:
+            wvls = self.wave
+        return self.Manygauss(np.log(wvls), result)
+
+    def line_complex_model(self, name, exclude=None, wvls=None):
+        """
+        The flux for a given line complex as named as compname in the input line list
+        """
+        assert name.encode() in self.linelist['compname']
+        linelist = self.linelist[self.linelist['compname'] == name]
+        if exclude is None:
+            exclude = []
+        for i in exclude:
+            assert i.encode() in self.linelist['linename']
+        return sum(self.line_model(name, wvls) for name in linelist['linename'] if name not in exclude)

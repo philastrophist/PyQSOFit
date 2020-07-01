@@ -1,0 +1,8 @@
+sfdmap
+kapteyn
+numpy
+scipy
+matplotlib
+quantities
+emcee
+PyAstronomy
